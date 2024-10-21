@@ -1096,3 +1096,7 @@ if(ENABLE_TESTING)
     message(STATUS "Collecting code coverage data")
   endif()
 endif()
+
+find_package(Torch REQUIRED)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}" nvToolsExt)
