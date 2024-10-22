@@ -3,6 +3,11 @@
 # CMake build system
 # This file is part of LAMMPS
 cmake_minimum_required(VERSION 3.16)
+# Because LIBNVTOOLSEXT is deprecated after cmake 3.25
+# So we need to set the maximum version
+if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.25")
+  message(FATAL_ERROR "CMake version 3.25 or later is not supported")
+endif()
 ########################################
 # set policy to silence warnings about ignoring <PackageName>_ROOT but use it
 if(POLICY CMP0074)
@@ -144,14 +149,8 @@ if((PKG_KOKKOS) AND (Kokkos_ENABLE_CUDA) AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL
   set(CMAKE_TUNE_DEFAULT "${CMAKE_TUNE_DEFAULT} -Xcudafe --diag_suppress=unrecognized_pragma -Xcudafe --diag_suppress=128")
 endif()
 
-# we require C++11 without extensions. Kokkos requires at least C++17 (currently)
+# we require C++17 for libtorch
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 11)
-endif()
-if(CMAKE_CXX_STANDARD LESS 11)
-  message(FATAL_ERROR "C++ standard must be set to at least 11")
-endif()
-if(PKG_KOKKOS AND (CMAKE_CXX_STANDARD LESS 17))
   set(CMAKE_CXX_STANDARD 17)
 endif()
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -1097,6 +1096,10 @@ if(ENABLE_TESTING)
   endif()
 endif()
 
+
+# We need to set env variable LIBNVTOOLSEXT
+# Because libtorch is not able to find it
+set(LIBNVTOOLSEXT "$ENV{CONDA_PREFIX}/lib/libnvToolsExt.so")
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
-target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}" nvToolsExt)
+target_link_libraries(lammps PUBLIC "${TORCH_LIBRARIES}")

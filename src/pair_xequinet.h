@@ -4,7 +4,7 @@
 
 PairStyle(xequinet, PairXequiNet<low>)
 PairStyle(xequinet32, PairXequiNet<low>)
-PairSytle(xequinet64, PairXequiNet<high>)
+PairStyle(xequinet64, PairXequiNet<high>)
 
 #else
 
@@ -60,13 +60,6 @@ template<Precision precision> class PairXequiNet: public Pair {
     typedef typename std::conditional_t<precision == low, float, double> data_type;
 
     torch::ScalarType scalar_type = torch::CppTypeToScalarType<data_type>();
-    /*
-    std::string model_file_path;
-    std::string model_precision;
-    torch::Dtype tensor_type = torch::kDouble;
-    torch::TensorOptions option1=torch::TensorOptions().dtype(torch::kDouble);
-    torch::TensorOptions option2=torch::TensorOptions().dtype(torch::kLong);
-    */
 };
 
 }  // namespace LAMMPS_NS

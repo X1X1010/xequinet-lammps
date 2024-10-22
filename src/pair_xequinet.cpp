@@ -39,8 +39,6 @@
 #include "neigh_list.h"
 #include "neigh_request.h"
 #include "neighbor.h"
-#include "potential_file_reader.h"
-#include "tokenizer.h"
 
 using namespace LAMMPS_NS;
 
@@ -54,8 +52,6 @@ template<Precision precision> PairXequiNet<precision>::PairXequiNet(LAMMPS *lmp)
 
   if (torch::cuda::is_available()) {
     device = torch::kCUDA;
-    //   option1 = option1.pinned_memory(true);
-    //   option2 = option2.pinned_memory(true);
   } else {
     device = torch::kCPU;
   }
@@ -67,7 +63,6 @@ template<Precision precision> PairXequiNet<precision>::~PairXequiNet() {
   if (allocated) {
       memory->destroy(setflag);
       memory->destroy(cutsq);
-      memory->destroy(type_mapper);
   }
 }
 
@@ -476,7 +471,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
       int jnum = numneigh[i];
       int *jlist = firstneigh[i];
 
-      int edge_counter = cunsum_neigh_per_atom[ii];
+      int edge_counter = cumsum_neigh_per_atom[ii];
       for (int jj = 0; jj < jnum; ++jj) {
         int j = jlist[jj];
         j &= NEIGHMASK;
@@ -528,3 +523,8 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
   
   if (vflag_fdotr) virial_fdotr_compute();
 }
+
+namespace LAMMPS_NS {
+  template class PairXequiNet<low>;
+  template class PairXequiNet<high>;
+}  // namespace LAMMPS_NS
