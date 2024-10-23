@@ -322,8 +322,8 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
           s1 = x[j][1] - x[j_real][1];
           s2 = x[j][2] - x[j_real][2];
           cs0 = s0 * h_inv[0] + s1 * h_inv[5] + s2 * h_inv[4];
-          cs1 = s0 * h_inv[1] + s1 * h_inv[3];
-          cs2 = s0 * h_inv[2];
+          cs1 = s1 * h_inv[1] + s2 * h_inv[3];
+          cs2 = s2 * h_inv[2];
 
           cell_offsets[edge_counter][0] = std::round(cs0);
           cell_offsets[edge_counter][1] = std::round(cs1);
@@ -339,8 +339,8 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
   input.insert(ATOMIC_NUMBERS, mapped_type_tensor.to(device));
   input.insert(POSITIONS, pos_tensor.to(device));
   input.insert(CELL_OFFSETS, cell_offsets_tensor.to(device));
-  input.insert(CELL, cell_tensor.to(device));
-  input.insert(PBC, pbc_tensor.to(device));
+  input.insert(CELL, cell_tensor.unsqueeze(0).to(device));
+  input.insert(PBC, pbc_tensor.unsqueeze(0).to(device));
   input.insert(EDGE_INDEX, edges_tensor.to(device));
   std::vector<torch::jit::IValue> input_vector(1, input);
   const bool fflag_input = true;
