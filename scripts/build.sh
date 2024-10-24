@@ -26,6 +26,7 @@ cmake -D CMAKE_INSTALL_PREFIX=$root_dir \
       -D PKG_EXTRA-MOLECULE=on \
       -D PKG_MC=on \
       -D PKG_CLASS2=yes \
+      -D PKG_MISC=on \
       -D BUILD_SHARED_LIBS=yes \
       -D BUILD_MPI=yes \
       -D BUILD_OMP=yes \
