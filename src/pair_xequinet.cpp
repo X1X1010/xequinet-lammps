@@ -496,7 +496,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
   input.insert(EDGE_INDEX, edges_tensor.to(device));
   std::vector<torch::jit::IValue> input_vector(1, input);
   const bool fflag_input = true;
-  const bool vflag_input = (vflag > 0);
+  const bool vflag_input = false;
   std::unordered_map<std::string, torch::IValue> kwargs;
   kwargs["compute_forces"] = fflag_input;
   kwargs["compute_virial"] = vflag_input;
