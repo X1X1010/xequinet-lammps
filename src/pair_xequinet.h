@@ -33,7 +33,7 @@ PairStyle(xequinet64, PairXequiNet<high>)
 #include <vector>
 
 #include "pair.h"
-enum Precision {low, high};
+#include "precision.h"
 
 namespace LAMMPS_NS {
 

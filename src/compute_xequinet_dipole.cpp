@@ -1,21 +1,4 @@
-/* ----------------------------------------------------------------------
-   LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
-   https://lammps.sandia.gov/, Sandia National Laboratories
-   Steve Plimpton, sjplimp@sandia.gov
-
-   Copyright (2003) Sandia Corporation.  Under the terms of Contract
-   DE-AC04-94AL85000 with Sandia Corporation, the U.S. Government retains
-   certain rights in this software.  This software is distributed under
-   the GNU General Public License.
-
-   See the README file in the top-level LAMMPS directory.
-------------------------------------------------------------------------- */
-
-/* -------------------------------------------------------------------------
-   Contributing authors: Wenjie Yan, Yicheng Chen (The XDFT group at Fudan)
----------------------------------------------------------------------------- */
-
-#include "pair_xequinet.h"
+#include "compute_xequinet_dipole.h"
 #include <torch/csrc/jit/runtime/graph_executor.h>
 #include <torch/script.h>
 #include <torch/torch.h>
@@ -42,12 +25,10 @@
 
 using namespace LAMMPS_NS;
 
-template<Precision precision> PairXequiNet<precision>::PairXequiNet(LAMMPS *lmp) : Pair(lmp) {
-
-  restartinfo = 0;
-  manybody_flag = 1;
-
-  std::cout << "Running XequiNet model via LAMMPS interface." << std::endl;
+// compute COMPUTE_ID GROUP xequinet/dipole model.jit element1 element2 ...
+template<Precision precision> ComputeXequiNetDipole<precision>::ComputeXequiNetDipole(LAMMPS *lmp, int narg, char **arg) : Compute(lmp, narg, arg)
+{
+  std::cout << "Computing dipole using XequiNet model via LAMMPS interface." << std::endl;
   std::cout << "The model is using precision: " << typeid(data_type).name() << std::endl;
 
   if (torch::cuda::is_available()) {
@@ -56,82 +37,53 @@ template<Precision precision> PairXequiNet<precision>::PairXequiNet(LAMMPS *lmp)
     device = torch::kCPU;
   }
   std::cout << "The model is on device: " << device << std::endl;
+
+  int ntypes = atom->ntypes;
+  if (narg != 4 + ntypes)
+    error->all(FLERR,
+               "Incorrect args for compute xequinet/dipole, should be "
+               "COMPUTE_ID GROUP xequinet/dipole <model>.jit <element1> <element2> ...");
+  if (igroup)
+    error->all(FLERR, "Compute xequinet/dipole must use group all");
+
+  
+  model_path = arg[3];
+
+  // clear elements
+  elements.clear();
+  for (int i = 0; i < ntypes; ++i) { elements.emplace_back(arg[i + 4]); }
+
+  scalar_flag = 0;
+  vector_flag = 1;
+  size_vector = 3;
+  extscalar = 0;
+  extvector = 1;
+
+  vector = new double[size_vector];
+  vector[0] = vector[1] = vector[2] = 0.0;
 }
 
 
-template<Precision precision> PairXequiNet<precision>::~PairXequiNet() {
-
-  if (allocated) {
-      memory->destroy(setflag);
-      memory->destroy(cutsq);
-  }
+template<Precision precision> ComputeXequiNetDipole<precision>::~ComputeXequiNetDipole()
+{
+  delete[] vector;
 }
 
 
-template<Precision precision> void PairXequiNet<precision>::init_style() {
-
-  if (atom->tag_enable == 0) error->all(FLERR, "Pair style XequiNet requires atom IDs");
+template<Precision precision> void ComputeXequiNetDipole<precision>::init()
+{
+  if (atom->tag_enable == 0) error->all(FLERR, "Compute xequinet/dipole requires atom IDs");
 
   // Request a full neighbor list
   neighbor->add_request(this, NeighConst::REQ_FULL | NeighConst::REQ_GHOST);
-  
-  if (force->newton_pair == 0) error->all(FLERR, "Pair style XequiNet requires newton pair on");
-}
 
-
-template<Precision precision> double PairXequiNet<precision>::init_one(int i, int j) {
-    return cutoff;
-}
-
-
-template <Precision precision> void PairXequiNet<precision>::allocate() {
-
-  int n = atom->ntypes;
-
-  // atom types are 1-based
-  memory->create(setflag,n+1,n+1,"pair:setflag");
-  memory->create(cutsq,n+1,n+1,"pair:cutsq");
-  allocated = 1;
-}
-
-
-template <Precision precision> void PairXequiNet<precision>::settings(int narg, char ** /*arg*/) {
-  // "xequinet" must be the first argument after pair_style
-  if (narg > 0) error->all(FLERR, "Illegal pair_style command for XequiNet, too many arguments.");
-}
-
-
-template <Precision precision> void PairXequiNet<precision>::coeff(int narg, char** arg) {
-  // parse coefficients of pair_coeff command. e.g.
-  // pair_coeff xequinet * * model.jit O H
-  if (!allocated) allocate();
-
-  int ntypes = atom->ntypes;
-
-  // should be exactly 3 arguments following "pair_coeff"
-  if (narg != 3 + ntypes)
-    error->all(FLERR,
-               "Incorrect args for pair coefficients, should be * * "
-               "<model>.jit <element1> <element2> ...");
-  // ensure args are "* *"
-  if (strcmp(arg[0], "*") != 0 || strcmp(arg[1], "*") != 0)
-    error->all(FLERR, "Illegal pair_coeff command for XequiNet");
-
-  for (int i = i; i <= ntypes; ++i)
-    for (int j = i; j <= ntypes; ++j) setflag[i][j] = 0;
-
-  std::vector<std::string> elements(ntypes);
-  for (int i = 0; i < ntypes; ++i) { elements[i] = arg[i + 3]; }
-
+  // Load the model
   std::unordered_map<std::string, std::string> metadata = {
     {CUTOFF_RADIUS, ""}, {JIT_FUSION_STRATEGY, ""}, {N_SPECIES, ""},
     {PERIODIC_TABLE, ""},
   };
-
-  model = torch::jit::load(std::string(arg[2]), device, metadata);
-
+  model = torch::jit::load(std::string(model_path), device, metadata);
   torch::set_num_threads(1);  // single thread for potential nan problem
-
   model.eval();
 
   // if the model has not been frozen yet, freeze it
@@ -162,6 +114,8 @@ template <Precision precision> void PairXequiNet<precision>::coeff(int narg, cha
   cutoffsq = cutoff * cutoff;
 
   // type mapper
+  int ntypes = atom->ntypes;
+  assert (ntypes == elements.size());
   type_mapper.resize(ntypes, -1);
   std::stringstream ss;
   int n_species = std::stoi(metadata[N_SPECIES]);
@@ -171,39 +125,34 @@ template <Precision precision> void PairXequiNet<precision>::coeff(int narg, cha
   for (int i = 0; i < n_species; ++i) {
     std::string ele;
     ss >> ele;
-    for (int itype = 1; itype <= ntypes; ++itype) {
+    for (int itype = i; itype <= ntypes; ++itype) {
       if (ele.compare(elements[itype - 1]) == 0) {
         type_mapper[itype - 1] = i;
         std::cout << i << " | " << ele << " | " << itype << " | " << elements[itype - 1] << std::endl;
       }
     }
   }
-  // set setflag i,j for type pairs where both are mapped to elements
-  for (int i = 1; i <= ntypes; ++i) {
-    for (int j = i; j <= ntypes; ++j) {
-      if ((type_mapper[i - 1] >= 0) && (type_mapper[j - 1] >= 0)) { setflag[i][j] = 1; }
-    }
-  }
 }
 
 
-template<Precision precision> void PairXequiNet<precision>::compute(int eflag, int vflag) {
+template<Precision precision> void ComputeXequiNetDipole<precision>::init_list(int /*which*/, NeighList *ptr)
+{
+  list = ptr;
+}
 
-  // check flag
-  ev_init(eflag, vflag);
-  if (vflag_atom) { error->all(FLERR, "Pair style XequiNet does not support atom virials"); }
 
+template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vector()
+{
   // check if using the periodic boundary conditions
   if (lmp->domain->periodicity[0] || lmp->domain->periodicity[1] || lmp->domain->periodicity[2]) {
-    compute_pbc(eflag, vflag);
+    compute_vector_pbc();
   } else {
-    compute_non_pbc(eflag, vflag);
+    compute_vector_non_pbc();
   }
 }
 
-
-template<Precision precision> void PairXequiNet<precision>::compute_pbc(int eflag, int vflag) {
-
+template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vector_pbc()
+{
   // atom list to point to the same tag, use local index
   int *tag = atom->tag;
   // mapping from neigh list ordering to x/f ordering
@@ -223,7 +172,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
 
   // number of neighbors per atom
   int *numneigh = list->numneigh;
-  // neighbor list per atom
+  // neighbot list per atom
   int **firstneigh = list->firstneigh;
 
   // assemble pytorch input positions and tags
@@ -261,9 +210,9 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
     }
   }
 
-  // cumulative sum of neighbors, for indexing
+  // cumlative sum of neighbors, for indexing
   std::vector<int> cumsum_neigh_per_atom(nlocal + 1, 0);
-  for (int ii = 1; ii <= nlocal; ++ii) {
+  for (int ii = 1; ii < nlocal; ++ii) {
     cumsum_neigh_per_atom[ii] = cumsum_neigh_per_atom[ii - 1] + neigh_per_atom[ii - 1];
   }
   // total number of bonds (sum of all neighbors)
@@ -304,7 +253,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
 
     int jnum = numneigh[i];
     int *jlist = firstneigh[i];
-    
+
     int edge_counter = cumsum_neigh_per_atom[ii];
     for (int jj = 0; jj < jnum; ++jj) {
       int j = jlist[jj];
@@ -318,7 +267,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
       if (rsq <= cutoffsq) {
         edges[CENTER_IDX][edge_counter] = i;
         edges[NEIGHBOR_IDX][edge_counter] = j_real;
-
+        
         if (j == j_real) {
           cell_offsets[edge_counter][0] = 0.0;
           cell_offsets[edge_counter][1] = 0.0;
@@ -346,52 +295,22 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
   input.insert(ATOMIC_NUMBERS, mapped_type_tensor.to(device));
   input.insert(POSITIONS, pos_tensor.to(device));
   input.insert(CELL_OFFSETS, cell_offsets_tensor.to(device));
-  input.insert(CELL, cell_tensor.unsqueeze(0).to(device));
-  input.insert(PBC, pbc_tensor.unsqueeze(0).to(device));
+  input.insert(CELL, cell_tensor.to(device));
+  input.insert(PBC, pbc_tensor.to(device));
   input.insert(EDGE_INDEX, edges_tensor.to(device));
   std::vector<torch::jit::IValue> input_vector(1, input);
-  const bool fflag_input = true;
-  const bool vflag_input = (vflag > 0);
-  std::unordered_map<std::string, torch::IValue> kwargs;
-  kwargs["compute_forces"] = fflag_input;
-  kwargs["compute_virial"] = vflag_input;
 
-  auto output = model.forward(input_vector, kwargs).toGenericDict();
+  auto output = model.forward(input_vector).toGenericDict();
 
-  torch::Tensor forces_tensor = output.at(FORCES).toTensor().cpu();
-  auto forces = forces_tensor.accessor<data_type, 2>();
-  torch::Tensor atomic_energies_tensor = output.at(ATOMIC_ENERGIES).toTensor().cpu();
-  auto atomic_energies = atomic_energies_tensor.accessor<data_type, 1>();
-  torch::Tensor energy = output.at(TOTAL_ENERGY).toTensor().cpu();
-
-  // write forces and atomic energies back to LAMMPS
-  eng_vdwl = energy.item<double>();
-#pragma omp parallel for
-  for (int i = 0; i < nlocal; ++i) {
-    f[i][0] += forces[i][0];
-    f[i][1] += forces[i][1];
-    f[i][2] += forces[i][2];
-
-    if (eflag_atom) eatom[i] = atomic_energies[i];
-  }
-  
-  if (vflag) {
-    torch::Tensor v_tensor = output.at(VIRIAL).toTensor().cpu();
-    auto v = v_tensor.accessor<data_type, 3>();
-    // convert 3x3 virial tensor to 6 virial components
-    // first dimension of virial is batch
-    virial[0] = v[0][0][0];
-    virial[1] = v[0][1][1];
-    virial[2] = v[0][2][2];
-    virial[3] = v[0][0][1];
-    virial[4] = v[0][0][2];
-    virial[5] = v[0][1][2];
+  torch::Tensor dipole_tensor = output.at(DIPOLE).toTensor().cpu().reshape({3});
+  auto dipole = dipole_tensor.accessor<data_type, 1>();
+  for (int i = 0; i < 3; ++i) {
+    vector[i] = dipole[i];
   }
 }
 
-
-template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int eflag, int vflag) {
-
+template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vector_non_pbc()
+{
   // mapping from neigh list ordering to x/f ordering
   int *ilist = list->ilist;
   // number of local/real atoms
@@ -433,7 +352,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
     for (int jj = 0; jj < jnum; ++jj) {
       int j = jlist[jj];
       j &= NEIGHMASK;
-      
+
       double dx = x[i][0] - x[j][0];
       double dy = x[i][1] - x[j][1];
       double dz = x[i][2] - x[j][2];
@@ -446,7 +365,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
     }
   }
 
-  // cumulative sum of neighbors, for indexing
+  // cumlative sum of neighbors, for indexing
   std::vector<int> cumsum_neigh_per_atom(nlocal);
 #pragma omp parallel for
   for (int ii = 1; ii < nlocal; ++ii) {
@@ -502,36 +421,17 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
   input.insert(POSITIONS, pos_tensor.to(device));
   input.insert(EDGE_INDEX, edges_tensor.to(device));
   std::vector<torch::jit::IValue> input_vector(1, input);
-  const bool fflag_input = true;
-  const bool vflag_input = false;
-  std::unordered_map<std::string, torch::IValue> kwargs;
-  kwargs["compute_forces"] = fflag_input;
-  kwargs["compute_virial"] = vflag_input;
-
-  auto output = model.forward(input_vector, kwargs).toGenericDict();
-
-  torch::Tensor forces_tensor = output.at(FORCES).toTensor().cpu();
-  auto forces = forces_tensor.accessor<data_type, 2>();
-  torch::Tensor atomic_energies_tensor = output.at(ATOMIC_ENERGIES).toTensor().cpu();
-  auto atomic_energies = atomic_energies_tensor.accessor<data_type, 1>();
-  torch::Tensor energy = output.at(TOTAL_ENERGY).toTensor().cpu();
-
-  eng_vdwl = energy.item<double>();
-  // write forces and atomic energies back to LAMMPS
-#pragma omp parallel for
-  for (int ii = 0; ii < ntotal; ++ii) {
-    int i = ilist[ii];
-    f[i][0] += forces[i][0];
-    f[i][1] += forces[i][1];
-    f[i][2] += forces[i][2];
-
-    if (eflag_atom && ii < inum) eatom[i] = atomic_energies[i];
-  }
   
-  if (vflag_fdotr) virial_fdotr_compute();
+  auto output = model.forward(input_vector).toGenericDict();
+
+  torch::Tensor dipole_tensor = output.at(DIPOLE).toTensor().cpu().reshape({3});
+  auto dipole = dipole_tensor.accessor<data_type, 1>();
+  for (int i = 0; i < 3; ++i) {
+    vector[i] = dipole[i];
+  }
 }
 
 namespace LAMMPS_NS {
-  template class PairXequiNet<low>;
-  template class PairXequiNet<high>;
+  template class ComputeXequiNetDipole<low>;
+  template class ComputeXequiNetDipole<high>;
 }  // namespace LAMMPS_NS
