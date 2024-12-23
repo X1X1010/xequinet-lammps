@@ -125,7 +125,7 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::init()
   for (int i = 0; i < n_species; ++i) {
     std::string ele;
     ss >> ele;
-    for (int itype = i; itype <= ntypes; ++itype) {
+    for (int itype = 1; itype <= ntypes; ++itype) {
       if (ele.compare(elements[itype - 1]) == 0) {
         type_mapper[itype - 1] = i;
         std::cout << i << " | " << ele << " | " << itype << " | " << elements[itype - 1] << std::endl;
