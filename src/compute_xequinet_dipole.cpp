@@ -172,7 +172,7 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
 
   // number of neighbors per atom
   int *numneigh = list->numneigh;
-  // neighbot list per atom
+  // neighbor list per atom
   int **firstneigh = list->firstneigh;
 
   // assemble pytorch input positions and tags
@@ -210,9 +210,9 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
     }
   }
 
-  // cumlative sum of neighbors, for indexing
+  // cumulative sum of neighbors, for indexing
   std::vector<int> cumsum_neigh_per_atom(nlocal + 1, 0);
-  for (int ii = 1; ii < nlocal; ++ii) {
+  for (int ii = 1; ii <= nlocal; ++ii) {
     cumsum_neigh_per_atom[ii] = cumsum_neigh_per_atom[ii - 1] + neigh_per_atom[ii - 1];
   }
   // total number of bonds (sum of all neighbors)
@@ -253,7 +253,7 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
 
     int jnum = numneigh[i];
     int *jlist = firstneigh[i];
-
+    
     int edge_counter = cumsum_neigh_per_atom[ii];
     for (int jj = 0; jj < jnum; ++jj) {
       int j = jlist[jj];
@@ -267,7 +267,7 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
       if (rsq <= cutoffsq) {
         edges[CENTER_IDX][edge_counter] = i;
         edges[NEIGHBOR_IDX][edge_counter] = j_real;
-        
+
         if (j == j_real) {
           cell_offsets[edge_counter][0] = 0.0;
           cell_offsets[edge_counter][1] = 0.0;
@@ -295,8 +295,8 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
   input.insert(ATOMIC_NUMBERS, mapped_type_tensor.to(device));
   input.insert(POSITIONS, pos_tensor.to(device));
   input.insert(CELL_OFFSETS, cell_offsets_tensor.to(device));
-  input.insert(CELL, cell_tensor.to(device));
-  input.insert(PBC, pbc_tensor.to(device));
+  input.insert(CELL, cell_tensor.unsqueeze(0).to(device));
+  input.insert(PBC, pbc_tensor.unsqueeze(0).to(device));
   input.insert(EDGE_INDEX, edges_tensor.to(device));
   std::vector<torch::jit::IValue> input_vector(1, input);
 
