@@ -206,7 +206,7 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
       double dz = x[i][2] - x[j][2];
 
       double rsq = dx * dx + dy * dy + dz * dz;
-      if (rsq <= cutoffsq) { neigh_per_atom[ii]++; }
+      if (rsq < cutoffsq) { neigh_per_atom[ii]++; }
     }
   }
 
@@ -264,7 +264,7 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
       double dz = x[i][2] - x[j][2];
 
       double rsq = dx * dx + dy * dy + dz * dz;
-      if (rsq <= cutoffsq) {
+      if (rsq < cutoffsq) {
         edges[CENTER_IDX][edge_counter] = i;
         edges[NEIGHBOR_IDX][edge_counter] = j_real;
 
@@ -358,7 +358,7 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
       double dz = x[i][2] - x[j][2];
 
       double rsq = dx * dx + dy * dy + dz * dz;
-      if (rsq <= cutoffsq) {
+      if (rsq < cutoffsq) {
         neigh_per_atom[ii]++;
         nedges++;
       }
@@ -407,7 +407,7 @@ template<Precision precision> void ComputeXequiNetDipole<precision>::compute_vec
         double dz = x[i][2] - x[j][2];
 
         double rsq = dx * dx + dy * dy + dz * dz;
-        if (rsq <= cutoffsq) {
+        if (rsq < cutoffsq) {
           edges[CENTER_IDX][edge_counter] = i;
           edges[NEIGHBOR_IDX][edge_counter] = j;
           ++edge_counter;

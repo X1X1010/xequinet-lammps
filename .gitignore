@@ -43,6 +43,10 @@ Thumbs.db
 
 #cmake
 /build*
+/bin*
+/include*
+/lib64*
+/share*
 CMakeCache.txt
 CMakeFiles
 /Makefile
