@@ -27,6 +27,7 @@ cmake -D CMAKE_INSTALL_PREFIX=$root_dir \
       -D PKG_MC=on \
       -D PKG_CLASS2=yes \
       -D PKG_MISC=on \
+      -D PKG_EXTRA-FIX=on \
       -D BUILD_SHARED_LIBS=yes \
       -D BUILD_MPI=yes \
       -D BUILD_OMP=yes \
@@ -35,9 +36,8 @@ cmake -D CMAKE_INSTALL_PREFIX=$root_dir \
       -D CMAKE_CXX_FLAGS=-D_GLIBCXX_USE_CXX11_ABI=0 \
       $root_dir/cmake
 
-
-if [[ a =~ ^[0-9]+$ ]]; then
-    make -j$make_nproc
+if [[ $make_nproc =~ ^[0-9]+$ ]]; then
+    make install -j$make_nproc
 else
-    make
+    make install
 fi

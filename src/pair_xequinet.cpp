@@ -176,6 +176,9 @@ template <Precision precision> void PairXequiNet<precision>::coeff(int narg, cha
         type_mapper[itype - 1] = i;
         std::cout << i << " | " << ele << " | " << itype << " | " << elements[itype - 1] << std::endl;
       }
+      else if (ele.compare("NULL") == 0) {
+        type_mapper[itype - 1] = -1;
+      }
     }
   }
   // set setflag i,j for type pairs where both are mapped to elements
@@ -219,7 +222,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
   // atom types
   int *type = atom->type;
 
-  assert (inum == nlocal);
+  // assert (inum == nlocal);
 
   // number of neighbors per atom
   int *numneigh = list->numneigh;
@@ -228,14 +231,14 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
 
   // assemble pytorch input positions and tags
   torch::Tensor pos_tensor =
-      torch::zeros({nlocal, 3}, torch::TensorOptions().dtype(scalar_type));
+      torch::zeros({inum, 3}, torch::TensorOptions().dtype(scalar_type));
   torch::Tensor mapped_type_tensor =
-      torch::zeros({nlocal}, torch::TensorOptions().dtype(torch::kInt64));
+      torch::zeros({inum}, torch::TensorOptions().dtype(torch::kInt64));
   auto pos = pos_tensor.accessor<data_type, 2>();
   auto mapped_type = mapped_type_tensor.accessor<long, 1>();
 
 #pragma omp parallel for
-  for (int i = 0; i < nlocal; ++i) {
+  for (int i = 0; i < inum; ++i) {
     mapped_type[i] = type_mapper[type[i] - 1];
     pos[i][0] = x[i][0];
     pos[i][1] = x[i][1];
@@ -243,9 +246,9 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
   }
 
   // number of bonds per atom
-  std::vector<int> neigh_per_atom(nlocal, 0);
+  std::vector<int> neigh_per_atom(inum, 0);
 #pragma omp parallel for
-  for (int ii = 0; ii < nlocal; ++ii) {
+  for (int ii = 0; ii < inum; ++ii) {
     int i = ilist[ii];
     int jnum = numneigh[i];
     int *jlist = firstneigh[i];
@@ -262,12 +265,12 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
   }
 
   // cumulative sum of neighbors, for indexing
-  std::vector<int> cumsum_neigh_per_atom(nlocal + 1, 0);
-  for (int ii = 1; ii <= nlocal; ++ii) {
+  std::vector<int> cumsum_neigh_per_atom(inum + 1, 0);
+  for (int ii = 1; ii <= inum; ++ii) {
     cumsum_neigh_per_atom[ii] = cumsum_neigh_per_atom[ii - 1] + neigh_per_atom[ii - 1];
   }
   // total number of bonds (sum of all neighbors)
-  int nedges = cumsum_neigh_per_atom[nlocal];
+  int nedges = cumsum_neigh_per_atom[inum];
 
   torch::Tensor edges_tensor =
       torch::zeros({2, nedges}, torch::TensorOptions().dtype(torch::kInt64));
@@ -299,7 +302,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
   // calculate cell shifts and cell offsets
   double s0, s1, s2, cs0, cs1, cs2;
 #pragma omp parallel for
-  for (int ii = 0; ii < nlocal; ++ii) {
+  for (int ii = 0; ii < inum; ++ii) {
     int i = ilist[ii];
 
     int jnum = numneigh[i];
@@ -367,7 +370,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
   // write forces and atomic energies back to LAMMPS
   eng_vdwl = energy.item<double>();
 #pragma omp parallel for
-  for (int i = 0; i < nlocal; ++i) {
+  for (int i = 0; i < inum; ++i) {
     f[i][0] += forces[i][0];
     f[i][1] += forces[i][1];
     f[i][2] += forces[i][2];
@@ -405,12 +408,12 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
   // atom types
   int *type = atom->type;
 
-  assert (inum == nlocal);
+  // assert (inum == nlocal);
 
   // number of ghost atoms
   int nghost = atom->nghost;
   // total number of atoms
-  int ntotal = nlocal + nghost;
+  int ntotal = inum + nghost;
 
   // number of neighbors per atom
   int *numneigh = list->numneigh;
@@ -421,11 +424,11 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
   int nedges = 0;
 
   // number of bonds per atom
-  std::vector<int> neigh_per_atom(nlocal, 0);
+  std::vector<int> neigh_per_atom(inum, 0);
 
   // count total number of bonds
 #pragma omp parallel for reduction(+ : nedges)
-  for (int ii = 0; ii < nlocal; ++ii) {
+  for (int ii = 0; ii < inum; ++ii) {
     int i = ilist[ii];
 
     int jnum = numneigh[i];
@@ -447,9 +450,9 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
   }
 
   // cumulative sum of neighbors, for indexing
-  std::vector<int> cumsum_neigh_per_atom(nlocal);
+  std::vector<int> cumsum_neigh_per_atom(inum);
 #pragma omp parallel for
-  for (int ii = 1; ii < nlocal; ++ii) {
+  for (int ii = 1; ii < inum; ++ii) {
     cumsum_neigh_per_atom[ii] = cumsum_neigh_per_atom[ii - 1] + neigh_per_atom[ii - 1];
   }
 
@@ -474,7 +477,7 @@ template<Precision precision> void PairXequiNet<precision>::compute_non_pbc(int 
     pos[i][1] = x[i][1];
     pos[i][2] = x[i][2];
 
-    if (ii < nlocal) {
+    if (ii < inum) {
       int jnum = numneigh[i];
       int *jlist = firstneigh[i];
 
