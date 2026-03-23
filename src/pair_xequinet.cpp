@@ -117,7 +117,7 @@ template <Precision precision> void PairXequiNet<precision>::coeff(int narg, cha
   if (strcmp(arg[0], "*") != 0 || strcmp(arg[1], "*") != 0)
     error->all(FLERR, "Illegal pair_coeff command for XequiNet");
 
-  for (int i = i; i <= ntypes; ++i)
+  for (int i = 1; i <= ntypes; ++i)
     for (int j = i; j <= ntypes; ++j) setflag[i][j] = 0;
 
   std::vector<std::string> elements(ntypes);
