@@ -300,9 +300,9 @@ template<Precision precision> void PairXequiNet<precision>::compute_pbc(int efla
   double *h_inv = domain->h_inv;
 
   // calculate cell shifts and cell offsets
-  double s0, s1, s2, cs0, cs1, cs2;
 #pragma omp parallel for
   for (int ii = 0; ii < inum; ++ii) {
+    double s0, s1, s2, cs0, cs1, cs2;
     int i = ilist[ii];
 
     int jnum = numneigh[i];
